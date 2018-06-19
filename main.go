@@ -90,12 +90,15 @@ type field struct {
 	name string
 }
 
-func toTypes(fl *ast.FieldList) []ast.Expr {
+func toTypes(fl *ast.FieldList, bare bool) []ast.Expr {
 	if fl == nil || len(fl.List) == 0 {
 		return nil
 	}
 	types := make([]ast.Expr, 0, len(fl.List))
 	for _, f := range fl.List {
+		if bare && len(f.Names) > 0 && len(f.Names[0].Name) != 0 {
+			continue
+		}
 		types = append(types, f.Type)
 	}
 	return types
@@ -190,7 +193,7 @@ func writeIferr(w io.Writer, types []ast.Expr) error {
 	return nil
 }
 
-func iferr(w io.Writer, r io.Reader, pos int) error {
+func iferr(w io.Writer, r io.Reader, pos int, bare bool) error {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "iferr.go", r, 0)
 	if err != nil {
@@ -204,7 +207,7 @@ func iferr(w io.Writer, r io.Reader, pos int) error {
 	if v.ft == nil {
 		return fmt.Errorf("no functions at %d", pos)
 	}
-	types := toTypes(v.ft.Results)
+	types := toTypes(v.ft.Results, bare)
 	return writeIferr(w, types)
 }
 
@@ -212,14 +215,17 @@ func main() {
 	var (
 		pos   int
 		debug bool
+		bare  bool
 	)
+	bare = os.Getenv("IFERR_RESPECT_BARE_RETURN") == "1"
+	flag.BoolVar(&bare, "bare", bare, "bare return possible")
 	flag.IntVar(&pos, "pos", 0, "position of cursor")
 	flag.BoolVar(&debug, "debug", false, "enable debug log")
 	flag.Parse()
 	if debug {
 		dbgLog = log.New(os.Stderr, "D ", 0)
 	}
-	err := iferr(os.Stdout, os.Stdin, pos)
+	err := iferr(os.Stdout, os.Stdin, pos, bare)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
